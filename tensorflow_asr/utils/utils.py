@@ -153,3 +153,15 @@ def log10(x):
     numerator = tf.math.log(x)
     denominator = tf.math.log(tf.constant(10, dtype=numerator.dtype))
     return numerator / denominator
+
+def sum_duration(file):
+    sum = 0.0
+    with open(file, 'r', encoding = "utf-8") as fp:
+        lines = fp.read().splitlines()
+        lines = lines[1:]
+        for line in lines:
+            toks = line.split("\t")
+            sum += float(toks[1])
+    fp.close()
+
+    return (f"{sum:.3f}")

@@ -22,8 +22,10 @@ import numpy as np
 import tensorflow as tf
 
 from ..configs.config import RunningConfig
-from ..utils.utils import get_num_batches, bytes_to_string
+from ..utils.utils import get_num_batches, bytes_to_string,sum_duration
 from ..utils.metrics import ErrorRate, wer, cer
+
+import time
 
 
 class BaseRunner(metaclass=abc.ABCMeta):
@@ -365,6 +367,7 @@ class BaseTester(BaseRunner):
         self.processed_records = 0
 
         self.output_file_path = os.path.join(self.config.outdir, f"{output_name}.tsv")
+        # self.result_file_path = os.path.join(self.config.outdir, f"{output_name}.result") # XSP 2020/11/26
         self.test_metrics = {
             "beam_wer": ErrorRate(func=wer, name="test_beam_wer", dtype=tf.float32),
             "beam_cer": ErrorRate(func=cer, name="test_beam_cer", dtype=tf.float32),
@@ -373,6 +376,10 @@ class BaseTester(BaseRunner):
             "greed_wer": ErrorRate(func=wer, name="test_greed_wer", dtype=tf.float32),
             "greed_cer": ErrorRate(func=cer, name="test_greed_cer", dtype=tf.float32)
         }
+
+        self.start = 0.0
+        self.end = 0.0
+        self.duration = 0.0
 
     def set_output_file(self):
         if os.path.exists(self.output_file_path):
@@ -389,6 +396,9 @@ class BaseTester(BaseRunner):
         """Set train data loader (MUST)."""
         self.test_data_loader = test_dataset.create(batch_size=1)
 
+    def get_test_data_duration(self, test_dataset):
+        self.duration = float(sum_duration(''.join(test_dataset.data_paths)))
+
     # -------------------------------- RUNNING -------------------------------------
 
     def compile(self, trained_model: tf.keras.Model):
@@ -398,7 +408,12 @@ class BaseTester(BaseRunner):
     def run(self, test_dataset):
         self.set_output_file()
         self.set_test_data_loader(test_dataset)
+
+        self.get_test_data_duration(test_dataset)
+        self.start = time.time()
         self._test_epoch()
+        self.end = time.time()
+        
         self._finish()
 
     def _test_epoch(self):
@@ -439,18 +454,41 @@ class BaseTester(BaseRunner):
         file_paths, features, _, labels, _, _ = batch
 
         labels = self.model.text_featurizer.iextract(labels)
-        greed_pred = self.model.recognize(features)
-        if self.model.text_featurizer.decoder_config["beam_width"] > 0:
-            beam_pred = self.model.recognize_beam(features=features, lm=False)
-            beam_lm_pred = self.model.recognize_beam(features=features, lm=True)
-        else:
+        #greed_pred = self.model.recognize(features)
+        
+        # -------------------------------- XSP 2020/11/26 ------------------------------
+        
+        if self.model.text_featurizer.decoder_config["greed_pred"] == True:
+            greed_pred = self.model.recognize(features)
             beam_pred = beam_lm_pred = tf.constant([""], dtype=tf.string)
+        elif self.model.text_featurizer.decoder_config["beam_width"] > 0:
+            if self.model.text_featurizer.decoder_config["beam_pred"]:
+                beam_pred = self.model.recognize_beam(features=features, lm=False)
+                greed_pred = beam_lm_pred = tf.constant([""], dtype=tf.string)
+            elif self.model.text_featurizer.decoder_config["beam_lm_pred"]:
+                beam_lm_pred = self.model.recognize_beam(features=features, lm=True)
+                greed_pred = beam_pred = tf.constant([""], dtype=tf.string)
+        else:
+            greed_pred = beam_pred = beam_lm_pred = tf.constant([""], dtype=tf.string)
+
+        # -------------------------------------- end -------------------------------
+
+        # if self.model.text_featurizer.decoder_config["beam_width"] > 0:
+            # beam_pred = self.model.recognize_beam(features=features, lm=False)
+            # beam_lm_pred = self.model.recognize_beam(features=features, lm=True)
+        # else:
+            # beam_pred = beam_lm_pred = tf.constant([""], dtype=tf.string)
 
         return file_paths, labels, greed_pred, beam_pred, beam_lm_pred
 
     # -------------------------------- UTILS -------------------------------------
 
     def _finish(self):
+        print("\n> Computing RTF ...")
+        decode_time = float(f"{(self.end - self.start):.3f}")
+        RTF = decode_time / self.duration 
+        print(f"Durantion = {self.duration}s, Decode_time = {decode_time}s, RTF = {RTF}")
+        
         tf.print("\n> Calculating evaluation metrics ...")
         with open(self.output_file_path, "r", encoding="utf-8") as out:
             lines = out.read().splitlines()
@@ -478,6 +516,8 @@ class BaseTester(BaseRunner):
         tf.print("B_CER =", self.test_metrics["beam_cer"].result())
         tf.print("BLM_WER =", self.test_metrics["beam_lm_wer"].result())
         tf.print("BLM_CER =", self.test_metrics["beam_lm_cer"].result())
+        
+
 
     def _append_to_file(self,
                         file_path: np.ndarray,
