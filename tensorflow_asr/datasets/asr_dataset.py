@@ -26,6 +26,7 @@ from ..featurizers.text_featurizers import TextFeaturizer
 from ..utils.utils import bytestring_feature, print_one_line, get_num_batches
 
 AUTOTUNE = tf.data.experimental.AUTOTUNE
+print ("num cpus" + str(AUTOTUNE))
 TFRECORD_SHARDS = 16
 
 

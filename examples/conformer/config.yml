@@ -68,13 +68,14 @@ learning_config:
 
   dataset_config:
     train_paths:
-      - /mnt/d/SpeechProcessing/Datasets/LibriSpeech/train-clean-100/transcripts.tsv
+      - data/LibriSpeech/train-clean-100/transcripts.tsv
     eval_paths:
-      - /mnt/d/SpeechProcessing/Datasets/LibriSpeech/dev-clean/transcripts.tsv
-      - /mnt/d/SpeechProcessing/Datasets/LibriSpeech/dev-other/transcripts.tsv
+      - data/LibriSpeech/dev-clean/transcripts.tsv
+      - data/LibriSpeech/dev-other/transcripts.tsv
     test_paths:
-      - /mnt/d/SpeechProcessing/Datasets/LibriSpeech/test-clean/transcripts.tsv
-    tfrecords_dir: null
+      - data/LibriSpeech/test-clean/transcripts.tsv
+    tfrecords_dir: 
+      data/LibriSpeech/train-100_eval/tfrecords
 
   optimizer_config:
     warmup_steps: 40000
@@ -83,10 +84,10 @@ learning_config:
     epsilon: 1e-9
 
   running_config:
-    batch_size: 4
+    batch_size: 16
     accumulation_steps: 4
     num_epochs: 20
-    outdir: /mnt/d/SpeechProcessing/Trained/local/conformer
+    outdir: Trained/LibriSpeech/models/conformer
     log_interval_steps: 300
     eval_interval_steps: 500
     save_interval_steps: 1000
