@@ -75,7 +75,7 @@ learning_config:
     test_paths:
       - data/LibriSpeech/test-clean/transcripts.tsv
     tfrecords_dir: 
-      data/LibriSpeech/train-100_eval/tfrecords
+      data/LibriSpeech/train-100_eval_conformer/tfrecords
 
   optimizer_config:
     warmup_steps: 40000
@@ -84,7 +84,7 @@ learning_config:
     epsilon: 1e-9
 
   running_config:
-    batch_size: 16
+    batch_size: 8
     accumulation_steps: 4
     num_epochs: 20
     outdir: Trained/LibriSpeech/models/conformer

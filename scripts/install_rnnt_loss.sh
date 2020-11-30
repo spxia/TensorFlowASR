@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-mkdir externals
+mkdir -p externals
 cd ./externals || exit
 
 # Install rnnt_loss
@@ -8,14 +8,14 @@ if [ ! -d warp-transducer ]; then
     git clone https://github.com/usimarit/warp-transducer.git
 
     cd ./warp-transducer || exit
-    mkdir build && cd build || exit
+    mkdir -p build && cd build || exit
 
     if [ "$CUDA_HOME" ]; then
-      cmake \
-          -DUSE_NAIVE_KERNEL=on \
-          -DCMAKE_C_COMPILER_LAUNCHER="$(which gcc)" \
-          -DCMAKE_CXX_COMPILER_LAUNCHER="$(which g++)"  \
-          -DCUDA_TOOLKIT_ROOT_DIR="$CUDA_HOME" ..
+      #cmake \
+          #-DUSE_NAIVE_KERNEL=on \
+          #-DCMAKE_C_COMPILER_LAUNCHER="$(which gcc)" \
+          #-DCMAKE_CXX_COMPILER_LAUNCHER="$(which g++)"  
+      cmake -DCUDA_TOOLKIT_ROOT_DIR="$CUDA_HOME" ..
     else
       cmake \
           -DUSE_NAIVE_KERNEL=on \
