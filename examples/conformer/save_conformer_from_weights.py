@@ -39,6 +39,9 @@ parser.add_argument("--cpu", default=False, action="store_true",
 
 parser.add_argument("output", type=str, default=None,
                     help="Output to save whole model")
+                    
+parser.add_argument("--mxp", default=False, action="store_true",
+                    help="Enable mixed precision")
 
 args = parser.parse_args()
 

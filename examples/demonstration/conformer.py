@@ -14,7 +14,8 @@
 
 import argparse
 from tensorflow_asr.utils import setup_environment, setup_devices
-
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 setup_environment()
 import tensorflow as tf
 
@@ -62,16 +63,22 @@ speech_featurizer = TFSpeechFeaturizer(config.speech_config)
 text_featurizer = CharFeaturizer(config.decoder_config)
 
 # build model
+
 conformer = Conformer(**config.model_config, vocabulary_size=text_featurizer.num_classes)
+
 conformer._build(speech_featurizer.shape)
 conformer.load_weights(args.saved, by_name=True)
+
 conformer.summary(line_length=120)
 conformer.add_featurizers(speech_featurizer, text_featurizer)
 
 signal = read_raw_audio(args.filename)
+
 predicted = tf.constant(args.blank, dtype=tf.int32)
 states = tf.zeros([args.num_rnns, args.nstates, 1, args.statesize], dtype=tf.float32)
 
 hyp, _, _ = conformer.recognize_tflite(signal, predicted, states)
 
+print ("results:\n")
 print("".join([chr(u) for u in hyp]))
+

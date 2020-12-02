@@ -14,6 +14,8 @@
 
 import argparse
 import tensorflow as tf
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
 from tensorflow_asr.featurizers.speech_featurizers import read_raw_audio
 
