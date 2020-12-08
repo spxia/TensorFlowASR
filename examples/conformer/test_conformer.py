@@ -15,6 +15,7 @@
 import os
 import argparse
 from tensorflow_asr.utils import setup_environment, setup_devices
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
 setup_environment()
 import tensorflow as tf
