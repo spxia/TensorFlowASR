@@ -1,0 +1,12 @@
+git branch -a # 分支
+git checkout 某个分支名      # 切换分支
+git checkout -b 某个分支名   # 创建分支，并切换
+git remote add upstream http:....   # 添加上游分支
+
+
+git fetch upstream     #同步上游修订
+git merge upstream/main    #合并远程的main分支，使得原始的仓库的更新同步到自己的仓库
+
+
+
+可以用分保存自己的不想被放弃的修改
