@@ -15,6 +15,7 @@
 import argparse
 import tensorflow as tf
 import os
+import time
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
 from tensorflow_asr.featurizers.speech_featurizers import read_raw_audio
@@ -42,7 +43,7 @@ parser.add_argument("--statesize", type=int, default=320,
 args = parser.parse_args()
 
 tflitemodel = tf.lite.Interpreter(model_path=args.tflite)
-
+start = time.time()
 signal = read_raw_audio(args.filename)
 
 input_details = tflitemodel.get_input_details()
@@ -60,5 +61,6 @@ tflitemodel.set_tensor(
 )
 tflitemodel.invoke()
 hyp = tflitemodel.get_tensor(output_details[0]["index"])
-
+end = time.time()
 print("".join([chr(u) for u in hyp]))
+print ("total time " + str(end - start))

@@ -15,6 +15,7 @@
 import os
 import argparse
 from tensorflow_asr.utils import setup_environment, setup_devices
+from tensorflow_asr.utils.utils import bytes_to_string
 import os
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 setup_environment()
@@ -92,5 +93,8 @@ if (args.beam_width):
     transcript = conformer.recognize_beam(signal[None, ...])
 else:
     transcript = conformer.recognize(signal[None, ...])
-
-tf.print("Transcript:", transcript[0])
+#    transcript = conformer.execute(signal[None, ...])
+    decoded = [d.numpy() for d in transcript]
+    decoded = bytes_to_string(decoded)
+print (decoded[0])
+#tf.print("Transcript:", transcript[0])
