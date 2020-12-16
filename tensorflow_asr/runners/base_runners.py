@@ -464,11 +464,8 @@ class BaseTester(BaseRunner):
             beam_pred = self.model.recognize_beam(signals, lm=False)
         if self.model.text_featurizer.decoder_config.lm_config:
             beam_lm_pred = self.model.recognize_beam(signals, lm=True)
-<<<<<<< HEAD
         else:
             greed_pred = beam_pred = beam_lm_pred = tf.constant([""], dtype=tf.string)
-=======
->>>>>>> upstream/main
 
         return file_paths, labels, greed_pred, beam_pred, beam_lm_pred
 
