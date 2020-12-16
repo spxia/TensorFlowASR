@@ -2,11 +2,13 @@
 <p>TensorFlowASR :zap:</p>
 <p align="center">
 <a href="https://github.com/TensorSpeech/TensorFlowASR/blob/main/LICENSE">
-  <img alt="GitHub" src="https://img.shields.io/github/license/TensorSpeech/TensorFlowASR?style=for-the-badge&logo=apache">
+  <img alt="GitHub" src="https://img.shields.io/github/license/TensorSpeech/TensorFlowASR?logo=apache&logoColor=green">
 </a>
-<img alt="python" src="https://img.shields.io/badge/python-%3E%3D3.6-blue?style=for-the-badge&logo=python">
-<img alt="tensorflow" src="https://img.shields.io/badge/tensorflow-%3E%3D2.3.0-orange?style=for-the-badge&logo=tensorflow">
-<img alt="ubuntu" src="https://img.shields.io/badge/ubuntu-%3E%3D18.04-blueviolet?style=for-the-badge&logo=ubuntu">
+<img alt="python" src="https://img.shields.io/badge/python-%3E%3D3.6-blue?logo=python">
+<img alt="tensorflow" src="https://img.shields.io/badge/tensorflow-%3E%3D2.3.0-orange?logo=tensorflow">
+<a href="https://pypi.org/project/TensorFlowASR/">
+  <img alt="PyPI" src="https://img.shields.io/pypi/v/TensorFlowASR?color=%234285F4&label=release&logo=pypi&logoColor=%234285F4">
+</a>
 </p>
 </h1>
 <h2 align="center">
@@ -19,18 +21,14 @@ TensorFlowASR implements some automatic speech recognition architectures such as
 
 ## What's New?
 
+- (12/12/2020) Add support for using masking
 - (11/14/2020) Supported Gradient Accumulation for Training in Larger Batch Size
 - (11/3/2020) Reduce differences between `librosa.stft` and `tf.signal.stft`
 - (10/31/2020) Update DeepSpeech2 and Supported Jasper [https://arxiv.org/abs/1904.03288](https://arxiv.org/abs/1904.03288)
 - (10/18/2020) Supported Streaming Transducer [https://arxiv.org/abs/1811.06621](https://arxiv.org/abs/1811.06621)
-- (10/15/2020) Add gradients accumulation and Refactor to TensorflowASR
-- (10/10/2020) Update documents and upload package to pypi
-- (10/6/2020) Change `nlpaug` version to `>=1.0.1`
-- (9/18/2020) Support `word-pieces` (aka `subwords`) using `tensorflow-datasets`
-- Support `transducer` tflite greedy decoding (conversion and invocation)
-- Distributed training using `tf.distribute.MirroredStrategy`
 
 ## Table of Contents
+
 <!-- TOC -->
 
 - [What's New?](#whats-new)
@@ -88,7 +86,7 @@ For anaconda3:
 ```bash
 conda create -y -n tfasr tensorflow-gpu python=3.7 # tensorflow if using CPU
 conda activate tfasr
-pip install -U tensorflow-gpu # upgrade to latest version of tensorflow 
+pip install -U tensorflow-gpu # upgrade to latest version of tensorflow
 git clone https://github.com/TensorSpeech/TensorFlowASR.git
 cd TensorFlowASR
 python setup.py install

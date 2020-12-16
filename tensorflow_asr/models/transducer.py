@@ -95,7 +95,7 @@ class TransducerPrediction(tf.keras.Model):
             )
         return tf.stack(states, axis=0)
 
-    def call(self, inputs, training=False):
+    def call(self, inputs, training=False, **kwargs):
         # inputs has shape [B, U]
         # use tf.gather_nd instead of tf.gather for tflite conversion
         outputs = self.embed(inputs, training=training)
@@ -170,7 +170,7 @@ class TransducerJoint(tf.keras.Model):
             bias_regularizer=bias_regularizer
         )
 
-    def call(self, inputs, training=False):
+    def call(self, inputs, training=False, **kwargs):
         # enc has shape [B, T, E]
         # pred has shape [B, U, P]
         enc_out, pred_out = inputs
@@ -256,7 +256,7 @@ class Transducer(Model):
         self.speech_featurizer = speech_featurizer
         self.text_featurizer = text_featurizer
 
-    def call(self, inputs, training=False):
+    def call(self, inputs, training=False, **kwargs):
         """
         Transducer Model call function
         Args:
@@ -269,9 +269,9 @@ class Transducer(Model):
             `logits` with shape [B, T, U, vocab]
         """
         features, predicted = inputs
-        enc = self.encoder(features, training=training)
-        pred = self.predict_net(predicted, training=training)
-        outputs = self.joint_net([enc, pred], training=training)
+        enc = self.encoder(features, training=training, **kwargs)
+        pred = self.predict_net(predicted, training=training, **kwargs)
+        outputs = self.joint_net([enc, pred], training=training, **kwargs)
         return outputs
 
     def encoder_inference(self, features):
@@ -462,7 +462,7 @@ class Transducer(Model):
         return tf.map_fn(execute, signals, fn_output_signature=tf.TensorSpec([], dtype=tf.string))
 
     def perform_beam_search(self, encoded, lm=False):
-        with tf.name_scope(f"{self.name}_beam_search"):
+        with tf.device("/CPU:0"), tf.name_scope(f"{self.name}_beam_search"):
             beam_width = tf.cond(
                 tf.less(self.text_featurizer.decoder_config.beam_width, self.text_featurizer.num_classes),
                 true_fn=lambda: self.text_featurizer.decoder_config.beam_width,
@@ -520,9 +520,9 @@ class Transducer(Model):
                 def beam_body(beam, beam_width, A, A_i, B):
                     y_hat_score, y_hat_score_index = tf.math.top_k(A.score.stack(), k=1)
                     y_hat_score = y_hat_score[0]
-                    y_hat_index = tf.gather_nd(A.indices.stack(), tf.expand_dims(y_hat_score_index[0], axis=-1))
-                    y_hat_prediction = tf.gather_nd(A.prediction.stack(), tf.expand_dims(y_hat_score_index[0], axis=-1))
-                    y_hat_states = tf.gather_nd(A.states.stack(), tf.expand_dims(y_hat_score_index[0], axis=-1))
+                    y_hat_index = tf.gather_nd(A.indices.stack(), y_hat_score_index)
+                    y_hat_prediction = tf.gather_nd(A.prediction.stack(), y_hat_score_index)
+                    y_hat_states = tf.gather_nd(A.states.stack(), y_hat_score_index)
 
                     ytu, new_states = self.decoder_inference(encoded=encoded_t, predicted=y_hat_index, states=y_hat_states)
 
@@ -571,11 +571,16 @@ class Transducer(Model):
 
             _, _, B = tf.while_loop(condition, body, loop_vars=(0, total, B))
 
-            y_hat_score, y_hat_score_index = tf.math.top_k(B.score.stack(), k=1)
+            scores = B.score.stack()
+            if self.text_featurizer.decoder_config.norm_score:
+                prediction_lengths = tf.strings.length(B.prediction.stack(), unit="UTF8_CHAR")
+                scores /= tf.cast(prediction_lengths, dtype=scores.dtype)
+
+            y_hat_score, y_hat_score_index = tf.math.top_k(scores, k=1)
             y_hat_score = y_hat_score[0]
-            y_hat_index = tf.gather_nd(B.indices.stack(), tf.expand_dims(y_hat_score_index[0], axis=-1))
-            y_hat_prediction = tf.gather_nd(B.prediction.stack(), tf.expand_dims(y_hat_score_index[0], axis=-1))
-            y_hat_states = tf.gather_nd(B.states.stack(), tf.expand_dims(y_hat_score_index[0], axis=-1))
+            y_hat_index = tf.gather_nd(B.indices.stack(), y_hat_score_index)
+            y_hat_prediction = tf.gather_nd(B.prediction.stack(), y_hat_score_index)
+            y_hat_states = tf.gather_nd(B.states.stack(), y_hat_score_index)
 
             return Hypothesis(
                 index=y_hat_index,
