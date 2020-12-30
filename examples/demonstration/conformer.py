@@ -18,45 +18,28 @@ from tensorflow_asr.utils import setup_environment, setup_devices
 from tensorflow_asr.utils.utils import bytes_to_string
 import os
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+from tensorflow_asr.utils.utils import get_reduced_length
+
 setup_environment()
 import tensorflow as tf
 
 parser = argparse.ArgumentParser(prog="Conformer non streaming")
 
-parser.add_argument("filename", metavar="FILENAME",
-                    help="audio file to be played back")
+parser.add_argument("filename", metavar="FILENAME", help="audio file to be played back")
 
-parser.add_argument("--config", type=str, default=None,
-                    help="Path to conformer config yaml")
+parser.add_argument("--config", type=str, default=None, help="Path to conformer config yaml")
 
-parser.add_argument("--saved", type=str, default=None,
-                    help="Path to conformer saved h5 weights")
-
-parser.add_argument("--blank", type=int, default=0,
-                    help="Path to conformer tflite")
+parser.add_argument("--saved", type=str, default=None, help="Path to conformer saved h5 weights")
 
 parser.add_argument("--beam_width", type=int, default=0, help="Beam width")
 
-parser.add_argument("--num_rnns", type=int, default=1,
-                    help="Number of RNN layers in prediction network")
+parser.add_argument("--timestamp", default=False, action="store_true", help="Return with timestamp")
 
-parser.add_argument("--nstates", type=int, default=2,
-                    help="Number of RNN states in prediction network (1 for GRU and 2 for LSTM)")
+parser.add_argument("--device", type=int, default=0, help="Device's id to run test on")
 
-parser.add_argument("--statesize", type=int, default=320,
-                    help="Size of RNN state in prediction network")
+parser.add_argument("--cpu", default=False, action="store_true", help="Whether to only use cpu")
 
-parser.add_argument("--device", type=int, default=0,
-                    help="Device's id to run test on")
-
-parser.add_argument("--cpu", default=False, action="store_true",
-                    help="Whether to only use cpu")
-
-parser.add_argument("--subwords", type=str, default=None,
-                    help="Path to file that stores generated subwords")
-
-parser.add_argument("--output_name", type=str, default="test",
-                    help="Result filename name prefix")
+parser.add_argument("--subwords", type=str, default=None, help="Path to file that stores generated subwords")
 
 args = parser.parse_args()
 
@@ -88,13 +71,28 @@ conformer.summary(line_length=120)
 conformer.add_featurizers(speech_featurizer, text_featurizer)
 
 signal = read_raw_audio(args.filename)
+features = speech_featurizer.tf_extract(signal)
+input_length = get_reduced_length(tf.shape(features)[0], conformer.time_reduction_factor)
 
-if (args.beam_width):
-    transcript = conformer.recognize_beam(signal[None, ...])
+if args.beam_width:
+    transcript = conformer.recognize_beam(features[None, ...], input_length[None, ...])
+    print("Transcript:", transcript[0].numpy().decode("UTF-8"))
+elif args.timestamp:
+    transcript, stime, etime, _, _ = conformer.recognize_tflite_with_timestamp(
+        signal, tf.constant(text_featurizer.blank, dtype=tf.int32), conformer.predict_net.get_initial_state())
+    print("Transcript:", transcript)
+    print("Start time:", stime)
+    print("End time:", etime)
 else:
     transcript = conformer.recognize(signal[None, ...])
 #    transcript = conformer.execute(signal[None, ...])
     decoded = [d.numpy() for d in transcript]
     decoded = bytes_to_string(decoded)
-print (decoded[0])
-#tf.print("Transcript:", transcript[0])
+    print (decoded[0])
+    #tf.print("Transcript:", transcript[0])
+
+
+# 
+    transcript, _, _ = conformer.recognize_tflite(
+        signal, tf.constant(text_featurizer.blank, dtype=tf.int32), conformer.predict_net.get_initial_state())
+    print("Transcript:", tf.strings.unicode_encode(transcript, "UTF-8").numpy().decode("UTF-8"))

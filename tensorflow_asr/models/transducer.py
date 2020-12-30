@@ -14,23 +14,18 @@
 """ https://arxiv.org/pdf/1811.06621.pdf """
 
 import collections
+from typing import Optional
 import tensorflow as tf
 
 from . import Model
 from ..utils.utils import get_rnn, shape_list
-from ..featurizers.speech_featurizers import TFSpeechFeaturizer
+from ..featurizers.speech_featurizers import SpeechFeaturizer
 from ..featurizers.text_featurizers import TextFeaturizer
 from .layers.embedding import Embedding
 
-Hypothesis = collections.namedtuple(
-    "Hypothesis",
-    ("index", "prediction", "states")
-)
+Hypothesis = collections.namedtuple("Hypothesis", ("index", "prediction", "states"))
 
-BeamHypothesis = collections.namedtuple(
-    "BeamHypothesis",
-    ("score", "indices", "prediction", "states")
-)
+BeamHypothesis = collections.namedtuple("BeamHypothesis", ("score", "indices", "prediction", "states"))
 
 
 class TransducerPrediction(tf.keras.Model):
@@ -58,7 +53,7 @@ class TransducerPrediction(tf.keras.Model):
         for i in range(num_rnns):
             rnn = RNN(
                 units=rnn_units, return_sequences=True,
-                name=f"{name}_lstm_{i}", return_state=True,
+                name=f"{name}_{rnn_type}_{i}", return_state=True,
                 implementation=rnn_implementation,
                 kernel_regularizer=kernel_regularizer,
                 bias_regularizer=bias_regularizer
@@ -98,10 +93,12 @@ class TransducerPrediction(tf.keras.Model):
     def call(self, inputs, training=False, **kwargs):
         # inputs has shape [B, U]
         # use tf.gather_nd instead of tf.gather for tflite conversion
-        outputs = self.embed(inputs, training=training)
+        outputs, prediction_length = inputs
+        outputs = self.embed(outputs, training=training)
         outputs = self.do(outputs, training=training)
         for rnn in self.rnns:
-            outputs = rnn["rnn"](outputs, training=training)
+            mask = tf.sequence_mask(prediction_length)
+            outputs = rnn["rnn"](outputs, training=training, mask=mask)
             outputs = outputs[0]
             if rnn["ln"] is not None:
                 outputs = rnn["ln"](outputs, training=training)
@@ -124,8 +121,7 @@ class TransducerPrediction(tf.keras.Model):
         outputs = self.do(outputs, training=False)
         new_states = []
         for i, rnn in enumerate(self.rnns):
-            outputs = rnn["rnn"](outputs, training=False,
-                                 initial_state=tf.unstack(states[i], axis=0))
+            outputs = rnn["rnn"](outputs, training=False, initial_state=tf.unstack(states[i], axis=0))
             new_states.append(tf.stack(outputs[1:]))
             outputs = outputs[0]
             if rnn["ln"] is not None:
@@ -150,11 +146,19 @@ class TransducerJoint(tf.keras.Model):
     def __init__(self,
                  vocabulary_size: int,
                  joint_dim: int = 1024,
+                 activation: str = "tanh",
                  kernel_regularizer=None,
                  bias_regularizer=None,
                  name="tranducer_joint",
                  **kwargs):
         super(TransducerJoint, self).__init__(name=name, **kwargs)
+
+        activation = activation.lower()
+        if activation == "linear": self.activation = tf.keras.activation.linear
+        elif activation == "relu": self.activation = tf.nn.relu
+        elif activation == "tanh": self.activation = tf.nn.tanh
+        else: raise ValueError("activation must be either 'linear', 'relu' or 'tanh'")
+
         self.ffn_enc = tf.keras.layers.Dense(
             joint_dim, name=f"{name}_enc",
             kernel_regularizer=kernel_regularizer,
@@ -178,7 +182,7 @@ class TransducerJoint(tf.keras.Model):
         pred_out = self.ffn_pred(pred_out, training=training)  # [B, U, P] => [B, U, V]
         enc_out = tf.expand_dims(enc_out, axis=2)
         pred_out = tf.expand_dims(pred_out, axis=1)
-        outputs = tf.nn.tanh(enc_out + pred_out)  # => [B, T, U, V]
+        outputs = self.activation(enc_out + pred_out)  # => [B, T, U, V]
         outputs = self.ffn_out(outputs, training=training)
         return outputs
 
@@ -204,6 +208,7 @@ class Transducer(Model):
                  layer_norm: bool = True,
                  projection_units: int = 0,
                  joint_dim: int = 1024,
+                 joint_activation: str = "tanh",
                  kernel_regularizer=None,
                  bias_regularizer=None,
                  name="transducer",
@@ -227,24 +232,28 @@ class Transducer(Model):
         self.joint_net = TransducerJoint(
             vocabulary_size=vocabulary_size,
             joint_dim=joint_dim,
+            activation=joint_activation,
             kernel_regularizer=kernel_regularizer,
             bias_regularizer=bias_regularizer,
             name=f"{name}_joint"
         )
+        self.time_reduction_factor = 1
 
     def _build(self, input_shape):
         inputs = tf.keras.Input(shape=input_shape, dtype=tf.float32)
+        input_length = tf.keras.Input(shape=[], dtype=tf.int32)
         pred = tf.keras.Input(shape=[None], dtype=tf.int32)
-        self([inputs, pred], training=False)
+        pred_length = tf.keras.Input(shape=[], dtype=tf.int32)
+        self([inputs, input_length, pred, pred_length], training=False)
 
     def summary(self, line_length=None, **kwargs):
-        self.encoder.summary(line_length=line_length, **kwargs)
+        if self.encoder is not None: self.encoder.summary(line_length=line_length, **kwargs)
         self.predict_net.summary(line_length=line_length, **kwargs)
         self.joint_net.summary(line_length=line_length, **kwargs)
         super(Transducer, self).summary(line_length=line_length, **kwargs)
 
     def add_featurizers(self,
-                        speech_featurizer: TFSpeechFeaturizer,
+                        speech_featurizer: SpeechFeaturizer,
                         text_featurizer: TextFeaturizer):
         """
         Function to add featurizer to model to convert to end2end tflite
@@ -261,34 +270,42 @@ class Transducer(Model):
         Transducer Model call function
         Args:
             features: audio features in shape [B, T, F, C]
-            predicted: predicted sequence of character ids, in shape [B, U]
+            input_length: features time length in shape [B]
+            prediction: predicted sequence of ids, in shape [B, U]
+            prediction_length: predicted sequence of ids length in shape [B]
             training: python boolean
             **kwargs: sth else
 
         Returns:
             `logits` with shape [B, T, U, vocab]
         """
-        features, predicted = inputs
+        features, _, prediction, prediction_length = inputs
         enc = self.encoder(features, training=training, **kwargs)
-        pred = self.predict_net(predicted, training=training, **kwargs)
+        pred = self.predict_net([prediction, prediction_length], training=training, **kwargs)
         outputs = self.joint_net([enc, pred], training=training, **kwargs)
         return outputs
 
-    def encoder_inference(self, features):
+    def encoder_inference(self,
+                          features: tf.Tensor,
+                          input_length: Optional[tf.Tensor] = None,
+                          with_batch: Optional[bool] = False):
         """Infer function for encoder (or encoders)
 
         Args:
             features (tf.Tensor): features with shape [T, F, C]
+            input_length (tf.Tensor): optional features length with shape []
+            with_batch (bool): indicates whether the features included batch dim or not
 
         Returns:
             tf.Tensor: output of encoders with shape [T, E]
         """
         with tf.name_scope(f"{self.name}_encoder"):
+            if with_batch: return self.encoder(features, training=False)
             outputs = tf.expand_dims(features, axis=0)
             outputs = self.encoder(outputs, training=False)
             return tf.squeeze(outputs, axis=0)
 
-    def decoder_inference(self, encoded, predicted, states):
+    def decoder_inference(self, encoded: tf.Tensor, predicted: tf.Tensor, states: tf.Tensor):
         """Infer function for decoder
 
         Args:
@@ -316,28 +333,23 @@ class Transducer(Model):
     # -------------------------------- GREEDY -------------------------------------
 
     @tf.function
-    def recognize(self, signals):
+    def recognize(self,
+                  features: tf.Tensor,
+                  input_length: tf.Tensor,
+                  parallel_iterations: int = 10,
+                  swap_memory: bool = True):
         """
         RNN Transducer Greedy decoding
         Args:
-            signals (tf.Tensor): a batch of padded signals
+            features (tf.Tensor): a batch of extracted features
+            input_length (tf.Tensor): a batch of extracted features length
 
         Returns:
             tf.Tensor: a batch of decoded transcripts
         """
-        def execute(signal: tf.Tensor):
-            features = self.speech_featurizer.tf_extract(signal)
-            encoded = self.encoder_inference(features)
-            hypothesis = self.perform_greedy(
-                encoded,
-                predicted=tf.constant(self.text_featurizer.blank, dtype=tf.int32),
-                states=self.predict_net.get_initial_state(),
-                swap_memory=True
-            )
-            transcripts = self.text_featurizer.iextract(tf.expand_dims(hypothesis.prediction, axis=0))
-            return tf.squeeze(transcripts)  # reshape from [1] to []
-
-        return tf.map_fn(execute, signals, fn_output_signature=tf.TensorSpec([], dtype=tf.string))
+        encoded = self.encoder_inference(features, input_length, with_batch=True)
+        return self._perform_greedy_batch(encoded, input_length,
+                                          parallel_iterations=parallel_iterations, swap_memory=swap_memory)
 
     def recognize_tflite(self, signal, predicted, states):
         """
@@ -354,7 +366,7 @@ class Transducer(Model):
         """
         features = self.speech_featurizer.tf_extract(signal)
         encoded = self.encoder_inference(features)
-        hypothesis = self.perform_greedy(encoded, predicted, states, swap_memory=False)
+        hypothesis = self._perform_greedy(encoded, tf.shape(encoded)[0], predicted, states)
         transcript = self.text_featurizer.indices2upoints(hypothesis.prediction)
         return (
             transcript,
@@ -362,74 +374,118 @@ class Transducer(Model):
             hypothesis.states
         )
 
-    def perform_greedy(self, encoded, predicted, states, swap_memory=False):
+    def recognize_tflite_with_timestamp(self, signal, predicted, states):
+        features = self.speech_featurizer.tf_extract(signal)
+        encoded = self.encoder_inference(features)
+        hypothesis = self._perform_greedy(encoded, tf.shape(encoded)[0], predicted, states)
+        indices = self.text_featurizer.normalize_indices(hypothesis.prediction)
+        upoints = tf.gather_nd(self.text_featurizer.upoints, tf.expand_dims(indices, axis=-1))  # [None, max_subword_length]
+
+        num_samples = tf.cast(tf.shape(signal)[0], dtype=tf.float32)
+        total_time_reduction_factor = self.time_reduction_factor * self.speech_featurizer.frame_step
+
+        stime = tf.range(0, num_samples, delta=total_time_reduction_factor, dtype=tf.float32)
+        stime /= tf.cast(self.speech_featurizer.sample_rate, dtype=tf.float32)
+
+        etime = tf.range(total_time_reduction_factor, num_samples, delta=total_time_reduction_factor, dtype=tf.float32)
+        etime /= tf.cast(self.speech_featurizer.sample_rate, dtype=tf.float32)
+
+        non_blank = tf.where(tf.not_equal(upoints, 0))
+        non_blank_transcript = tf.gather_nd(upoints, non_blank)
+        non_blank_stime = tf.gather_nd(tf.repeat(tf.expand_dims(stime, axis=-1), tf.shape(upoints)[-1], axis=-1), non_blank)
+        non_blank_etime = tf.gather_nd(tf.repeat(tf.expand_dims(etime, axis=-1), tf.shape(upoints)[-1], axis=-1), non_blank)
+
+        return non_blank_transcript, non_blank_stime, non_blank_etime, hypothesis.prediction, hypothesis.states
+
+    def _perform_greedy_batch(self,
+                              encoded: tf.Tensor,
+                              encoded_length: tf.Tensor,
+                              parallel_iterations: int = 10,
+                              swap_memory: bool = False):
+        total = tf.shape(encoded)[0]
+        batch = tf.constant(0, dtype=tf.int32)
+
+        decoded = tf.TensorArray(
+            dtype=tf.string,
+            size=total, dynamic_size=False,
+            clear_after_read=False, element_shape=tf.TensorShape([])
+        )
+
+        def condition(batch, total, encoded, encoded_length, decoded): return tf.less(batch, total)
+
+        def body(batch, total, encoded, encoded_length, decoded):
+            hypothesis = self._perform_greedy(
+                encoded=encoded[batch],
+                encoded_length=encoded_length[batch],
+                predicted=tf.constant(self.text_featurizer.blank, dtype=tf.int32),
+                states=self.predict_net.get_initial_state(),
+                parallel_iterations=parallel_iterations,
+                swap_memory=swap_memory
+            )
+            transcripts = self.text_featurizer.iextract(tf.expand_dims(hypothesis.prediction, axis=0))
+            decoded = decoded.write(batch, tf.squeeze(transcripts))
+            return batch + 1, total, encoded, encoded_length, decoded
+
+        batch, total, _, _, decoded = tf.while_loop(
+            condition, body,
+            loop_vars=[batch, total, encoded, encoded_length, decoded],
+            parallel_iterations=parallel_iterations,
+            swap_memory=True,
+        )
+
+        return decoded.stack()
+
+    def _perform_greedy(self,
+                        encoded: tf.Tensor,
+                        encoded_length: tf.Tensor,
+                        predicted: tf.Tensor,
+                        states: tf.Tensor,
+                        parallel_iterations: int = 10,
+                        swap_memory: bool = False):
         with tf.name_scope(f"{self.name}_greedy"):
             time = tf.constant(0, dtype=tf.int32)
-            total = tf.shape(encoded)[0]
-            # Initialize prediction with a blank
-            # Prediction can not be longer than the encoded of audio plus blank
-            prediction = tf.TensorArray(
-                dtype=tf.int32,
-                size=(total + 1),
-                dynamic_size=False,
-                element_shape=tf.TensorShape([]),
-                clear_after_read=False
-            )
+            total = encoded_length
 
             hypothesis = Hypothesis(
-                index=tf.constant(0, dtype=tf.int32),
-                prediction=prediction.write(0, predicted),
+                index=tf.constant(self.text_featurizer.blank, dtype=tf.int32),
+                prediction=tf.ones([total], dtype=tf.int32) * self.text_featurizer.blank,
                 states=states
             )
 
             def condition(time, total, encoded, hypothesis): return tf.less(time, total)
 
             def body(time, total, encoded, hypothesis):
-                ytu, new_states = self.decoder_inference(
+                ytu, states = self.decoder_inference(
                     # avoid using [index] in tflite
                     encoded=tf.gather_nd(encoded, tf.expand_dims(time, axis=-1)),
-                    predicted=hypothesis.prediction.read(hypothesis.index),
+                    predicted=hypothesis.index,
                     states=hypothesis.states
                 )
-                char = tf.argmax(ytu, axis=-1, output_type=tf.int32)  # => argmax []
+                predict = tf.argmax(ytu, axis=-1, output_type=tf.int32)  # => argmax []
 
-                index, char, new_states = tf.cond(
-                    tf.equal(char, self.text_featurizer.blank),
-                    true_fn=lambda: (
-                        hypothesis.index,
-                        hypothesis.prediction.read(hypothesis.index),
-                        hypothesis.states
-                    ),
-                    false_fn=lambda: (
-                        hypothesis.index + 1,
-                        char,
-                        new_states
-                    )
+                index, predict, states = tf.cond(
+                    tf.equal(predict, self.text_featurizer.blank),
+                    true_fn=lambda: (hypothesis.index, predict, hypothesis.states),
+                    false_fn=lambda: (predict, predict, states)  # update if the new prediction is a non-blank
                 )
 
                 hypothesis = Hypothesis(
                     index=index,
-                    prediction=hypothesis.prediction.write(index, char),
-                    states=new_states
+                    prediction=tf.tensor_scatter_nd_update(
+                        hypothesis.prediction,
+                        indices=tf.reshape(time, [1, 1]),
+                        updates=tf.expand_dims(predict, axis=-1)
+                    ),
+                    states=states
                 )
 
                 return time + 1, total, encoded, hypothesis
 
             time, total, encoded, hypothesis = tf.while_loop(
-                condition,
-                body,
-                loop_vars=(time, total, encoded, hypothesis),
+                condition, body,
+                loop_vars=[time, total, encoded, hypothesis],
+                parallel_iterations=parallel_iterations,
                 swap_memory=swap_memory
-            )
-
-            # Gather predicted sequence
-            hypothesis = Hypothesis(
-                index=hypothesis.index,
-                prediction=tf.gather_nd(
-                    params=hypothesis.prediction.stack(),
-                    indices=tf.expand_dims(tf.range(hypothesis.index + 1), axis=-1)
-                ),
-                states=hypothesis.states
             )
 
             return hypothesis
@@ -437,38 +493,71 @@ class Transducer(Model):
     # -------------------------------- BEAM SEARCH -------------------------------------
 
     @tf.function
-    def recognize_beam(self, signals, lm=False):
+    def recognize_beam(self,
+                       features: tf.Tensor,
+                       input_length: tf.Tensor,
+                       lm: bool = False,
+                       parallel_iterations: int = 10,
+                       swap_memory: bool = True):
         """
         RNN Transducer Beam Search
         Args:
-            signals (tf.Tensor): a batch of padded signals
+            features (tf.Tensor): a batch of padded extracted features
             lm (bool, optional): whether to use language model. Defaults to False.
 
         Returns:
             tf.Tensor: a batch of decoded transcripts
         """
-        def execute(signal: tf.Tensor):
-            features = self.speech_featurizer.tf_extract(signal)
-            encoded = self.encoder_inference(features)
-            hypothesis = self.perform_beam_search(encoded, lm)
-            prediction = tf.map_fn(
-                lambda x: tf.strings.to_number(x, tf.int32),
-                tf.strings.split(hypothesis.prediction),
-                fn_output_signature=tf.TensorSpec([], dtype=tf.int32)
-            )
-            transcripts = self.text_featurizer.iextract(tf.expand_dims(prediction, axis=0))
-            return tf.squeeze(transcripts)  # reshape from [1] to []
+        encoded = self.encoder_inference(features, input_length, with_batch=True)
+        return self._perform_beam_search_batch(encoded, input_length, lm,
+                                               parallel_iterations=parallel_iterations, swap_memory=swap_memory)
 
-        return tf.map_fn(execute, signals, fn_output_signature=tf.TensorSpec([], dtype=tf.string))
+    def _perform_beam_search_batch(self,
+                                   encoded: tf.Tensor,
+                                   encoded_length: tf.Tensor,
+                                   lm: bool = False,
+                                   parallel_iterations: int = 10,
+                                   swap_memory: bool = False):
+        total = tf.shape(encoded)[0]
+        batch = tf.constant(0, dtype=tf.int32)
 
-    def perform_beam_search(self, encoded, lm=False):
+        decoded = tf.TensorArray(
+            dtype=tf.string,
+            size=total, dynamic_size=False,
+            clear_after_read=False, element_shape=tf.TensorShape([])
+        )
+
+        def condition(batch, total, encoded, encoded_length, decoded): return tf.less(batch, total)
+
+        def body(batch, total, encoded, encoded_length, decoded):
+            hypothesis = self._perform_beam_search(encoded[batch], encoded_length[batch], lm,
+                                                   parallel_iterations=parallel_iterations, swap_memory=swap_memory)
+            transcripts = self.text_featurizer.iextract(tf.expand_dims(hypothesis.prediction, axis=0))
+            decoded = decoded.write(batch, tf.squeeze(transcripts))
+            return batch + 1, total, encoded, encoded_length, decoded
+
+        batch, total, _, _, decoded = tf.while_loop(
+            condition, body,
+            loop_vars=[batch, total, encoded, encoded_length, decoded],
+            parallel_iterations=parallel_iterations,
+            swap_memory=True,
+        )
+
+        return decoded.stack()
+
+    def _perform_beam_search(self,
+                             encoded: tf.Tensor,
+                             encoded_length: tf.Tensor,
+                             lm: bool = False,
+                             parallel_iterations: int = 10,
+                             swap_memory: bool = False):
         with tf.device("/CPU:0"), tf.name_scope(f"{self.name}_beam_search"):
             beam_width = tf.cond(
                 tf.less(self.text_featurizer.decoder_config.beam_width, self.text_featurizer.num_classes),
                 true_fn=lambda: self.text_featurizer.decoder_config.beam_width,
                 false_fn=lambda: self.text_featurizer.num_classes - 1
             )
-            total = tf.shape(encoded)[0]
+            total = encoded_length
 
             def initialize_beam(dynamic=False):
                 return BeamHypothesis(
@@ -561,15 +650,27 @@ class Transducer(Model):
                         A = BeamHypothesis(score=a_score, indices=a_indices, prediction=a_prediction, states=a_states)
                         return pred + 1, A, A_i, B
 
-                    _, A, A_i, B = tf.while_loop(predict_condition, predict_body, loop_vars=(0, A, A_i, B))
+                    _, A, A_i, B = tf.while_loop(
+                        predict_condition, predict_body,
+                        loop_vars=[0, A, A_i, B],
+                        parallel_iterations=parallel_iterations, swap_memory=swap_memory
+                    )
 
                     return beam + 1, beam_width, A, A_i, B
 
-                _, _, A, A_i, B = tf.while_loop(beam_condition, beam_body, loop_vars=(0, beam_width, A, A_i, B))
+                _, _, A, A_i, B = tf.while_loop(
+                    beam_condition, beam_body,
+                    loop_vars=[0, beam_width, A, A_i, B],
+                    parallel_iterations=parallel_iterations, swap_memory=swap_memory
+                )
 
                 return time + 1, total, B
 
-            _, _, B = tf.while_loop(condition, body, loop_vars=(0, total, B))
+            _, _, B = tf.while_loop(
+                condition, body,
+                loop_vars=[0, total, B],
+                parallel_iterations=parallel_iterations, swap_memory=swap_memory
+            )
 
             scores = B.score.stack()
             if self.text_featurizer.decoder_config.norm_score:
@@ -584,19 +685,19 @@ class Transducer(Model):
 
             return Hypothesis(
                 index=y_hat_index,
-                prediction=y_hat_prediction,
+                prediction=tf.strings.to_number(tf.strings.split(y_hat_prediction), out_type=tf.int32),
                 states=y_hat_states
             )
 
     # -------------------------------- TFLITE -------------------------------------
 
-    def make_tflite_function(self, greedy: bool = True):
+    def make_tflite_function(self, timestamp: bool = False):
+        tflite_func = self.recognize_tflite_with_timestamp if timestamp else self.recognize_tflite
         return tf.function(
-            self.recognize_tflite,
+            tflite_func,
             input_signature=[
                 tf.TensorSpec([None], dtype=tf.float32),
                 tf.TensorSpec([], dtype=tf.int32),
-                tf.TensorSpec(self.predict_net.get_initial_state().get_shape(),
-                              dtype=tf.float32)
+                tf.TensorSpec(self.predict_net.get_initial_state().get_shape(), dtype=tf.float32)
             ]
         )

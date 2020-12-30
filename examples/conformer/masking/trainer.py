@@ -3,6 +3,7 @@ import tensorflow as tf
 from masking import create_padding_mask
 from tensorflow_asr.runners.transducer_runners import TransducerTrainer, TransducerTrainerGA
 from tensorflow_asr.losses.rnnt_losses import rnnt_loss
+from tensorflow_asr.utils.utils import get_reduced_length
 
 
 class TrainerWithMasking(TransducerTrainer):
@@ -13,11 +14,11 @@ class TrainerWithMasking(TransducerTrainer):
         mask = create_padding_mask(features, input_length, self.model.time_reduction_factor)
 
         with tf.GradientTape() as tape:
-            logits = self.model([features, pred_inp], training=True, mask=mask)
+            logits = self.model([features, input_length, pred_inp, label_length + 1], training=True, mask=mask)
             tape.watch(logits)
             per_train_loss = rnnt_loss(
                 logits=logits, labels=labels, label_length=label_length,
-                logit_length=(input_length // self.model.time_reduction_factor),
+                logit_length=get_reduced_length(input_length, self.model.time_reduction_factor),
                 blank=self.text_featurizer.blank
             )
             train_loss = tf.nn.compute_average_loss(per_train_loss,
@@ -37,11 +38,11 @@ class TrainerWithMaskingGA(TransducerTrainerGA):
         mask = create_padding_mask(features, input_length, self.model.time_reduction_factor)
 
         with tf.GradientTape() as tape:
-            logits = self.model([features, pred_inp], training=True, mask=mask)
+            logits = self.model([features, input_length, pred_inp, label_length + 1], training=True, mask=mask)
             tape.watch(logits)
             per_train_loss = rnnt_loss(
                 logits=logits, labels=labels, label_length=label_length,
-                logit_length=(input_length // self.model.time_reduction_factor),
+                logit_length=get_reduced_length(input_length, self.model.time_reduction_factor),
                 blank=self.text_featurizer.blank
             )
             train_loss = tf.nn.compute_average_loss(

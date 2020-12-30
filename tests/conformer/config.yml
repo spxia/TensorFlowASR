@@ -32,22 +32,29 @@ decoder_config:
   norm_score: True
 
 model_config:
-  name: streaming_transducer
-  encoder_reductions:
-    0: 3
-    1: 2
-  encoder_dmodel: 320
-  encoder_rnn_type: lstm
-  encoder_rnn_units: 1024
-  encoder_nlayers: 8
-  encoder_layer_norm: True
+  name: conformer
+  encoder_subsampling:
+    type: conv2d
+    filters: 144
+    kernel_size: 3
+    strides: 2
+  encoder_positional_encoding: sinusoid_concat
+  encoder_dmodel: 144
+  encoder_num_blocks: 16
+  encoder_head_size: 36
+  encoder_num_heads: 4
+  encoder_mha_type: relmha
+  encoder_kernel_size: 32
+  encoder_fc_factor: 0.5
+  encoder_dropout: 0.1
   prediction_embed_dim: 320
-  prediction_embed_dropout: 0.0
-  prediction_num_rnns: 2
-  prediction_rnn_units: 1024
+  prediction_embed_dropout: 0
+  prediction_num_rnns: 1
+  prediction_rnn_units: 320
   prediction_rnn_type: lstm
-  prediction_projection_units: 320
+  prediction_rnn_implementation: 1
   prediction_layer_norm: True
+  prediction_projection_units: 0
   joint_dim: 320
   joint_activation: tanh
 
@@ -73,15 +80,16 @@ learning_config:
     tfrecords_dir: null
 
   optimizer_config:
-    class_name: adam
-    config:
-      learning_rate: 0.0001
+    warmup_steps: 40000
+    beta1: 0.9
+    beta2: 0.98
+    epsilon: 1e-9
 
   running_config:
     batch_size: 2
-    accumulation_steps: 1
+    accumulation_steps: 4
     num_epochs: 20
-    outdir: /mnt/Miscellanea/Models/local/streaming_transducer
+    outdir: /mnt/Miscellanea/Models/local/conformer
     log_interval_steps: 300
     eval_interval_steps: 500
     save_interval_steps: 1000

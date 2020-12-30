@@ -377,7 +377,7 @@ class TFSpeechFeaturizer(SpeechFeaturizer):
     def stft(self, signal):
         return tf.square(
             tf.abs(tf.signal.stft(signal, frame_length=self.frame_length,
-                                  frame_step=self.frame_step, fft_length=self.nfft)))
+                                  frame_step=self.frame_step, fft_length=self.nfft, pad_end=True)))
 
     def power_to_db(self, S, ref=1.0, amin=1e-10, top_db=80.0):
         if amin <= 0:
@@ -428,14 +428,12 @@ class TFSpeechFeaturizer(SpeechFeaturizer):
         elif self.feature_type == "log_gammatone_spectrogram":
             features = self.compute_log_gammatone_spectrogram(signal)
         else:
-            raise ValueError("feature_type must be either 'mfcc',"
-                             "'log_mel_spectrogram' or 'spectrogram'")
+            raise ValueError("feature_type must be either 'mfcc', 'log_mel_spectrogram' or 'spectrogram'")
 
         features = tf.expand_dims(features, axis=-1)
 
         if self.normalize_feature:
-            features = tf_normalize_audio_features(
-                features, per_feature=self.normalize_per_feature)
+            features = tf_normalize_audio_features(features, per_feature=self.normalize_per_feature)
 
         return features
 

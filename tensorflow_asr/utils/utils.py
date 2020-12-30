@@ -58,12 +58,13 @@ def nan_to_zero(input_tensor):
 
 
 def bytes_to_string(array: np.ndarray, encoding: str = "utf-8"):
+    if array is None: return None
     return [transcript.decode(encoding) for transcript in array]
 
 
 def get_num_batches(samples, batch_size, drop_remainders=True):
-    if drop_remainders:
-        return math.floor(float(samples) / float(batch_size))
+    if samples is None or batch_size is None: return None
+    if drop_remainders: return math.floor(float(samples) / float(batch_size))
     return math.ceil(float(samples) / float(batch_size))
 
 
@@ -132,7 +133,7 @@ def merge_repeated(yseqs, blank=0):
     _, result, _, _ = tf.while_loop(
         _cond,
         _body,
-        loop_vars=(i, result, yseqs, U),
+        loop_vars=[i, result, yseqs, U],
         shape_invariants=(
             tf.TensorShape([]),
             tf.TensorShape([None]),
@@ -160,3 +161,6 @@ def sum_duration(file):
     fp.close()
 
     return (f"{sum:.3f}")
+
+def get_reduced_length(length, reduction_factor):
+    return tf.cast(tf.math.ceil(tf.divide(length, tf.cast(reduction_factor, dtype=length.dtype))), dtype=tf.int32)

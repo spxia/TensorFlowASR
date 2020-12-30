@@ -22,13 +22,13 @@ import tensorflow as tf
 from tensorflow_asr.configs.config import Config
 from tensorflow_asr.featurizers.speech_featurizers import TFSpeechFeaturizer
 from tensorflow_asr.featurizers.text_featurizers import SubwordFeaturizer
-from tensorflow_asr.models.conformer import Conformer
+from tensorflow_asr.models.contextnet import ContextNet
 
 DEFAULT_YAML = os.path.join(os.path.abspath(os.path.dirname(__file__)), "config.yml")
 
 tf.keras.backend.clear_session()
 
-parser = argparse.ArgumentParser(prog="Conformer Testing")
+parser = argparse.ArgumentParser(prog="ContextNet Testing")
 
 parser.add_argument("--config", type=str, default=DEFAULT_YAML,
                     help="The file path of model configuration file")
@@ -56,17 +56,17 @@ else:
     raise ValueError("subwords must be set")
 
 # build model
-conformer = Conformer(**config.model_config, vocabulary_size=text_featurizer.num_classes)
-conformer._build(speech_featurizer.shape)
-conformer.load_weights(args.saved, by_name=True)
-conformer.summary(line_length=150)
-conformer.add_featurizers(speech_featurizer, text_featurizer)
+contextnet = ContextNet(**config.model_config, vocabulary_size=text_featurizer.num_classes)
+contextnet._build(speech_featurizer.shape)
+contextnet.load_weights(args.saved, by_name=True)
+contextnet.summary(line_length=150)
+contextnet.add_featurizers(speech_featurizer, text_featurizer)
 
-concrete_func = conformer.make_tflite_function(greedy=True).get_concrete_function()
+concrete_func = contextnet.make_tflite_function(greedy=True).get_concrete_function()
 converter = tf.lite.TFLiteConverter.from_concrete_functions([concrete_func])
-converter.experimental_new_converter = True
 converter.optimizations = [tf.lite.Optimize.DEFAULT]
-converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS, tf.lite.OpsSet.SELECT_TF_OPS]
+converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS,
+                                       tf.lite.OpsSet.SELECT_TF_OPS]
 tflite_model = converter.convert()
 
 if not os.path.exists(os.path.dirname(args.output)):

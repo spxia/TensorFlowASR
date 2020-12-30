@@ -48,7 +48,7 @@ model_config:
   encoder_fc_factor: 0.5
   encoder_dropout: 0.1
   prediction_embed_dim: 320
-  prediction_embed_dropout: 0.1
+  prediction_embed_dropout: 0
   prediction_num_rnns: 1
   prediction_rnn_units: 320
   prediction_rnn_type: lstm
@@ -56,6 +56,7 @@ model_config:
   prediction_layer_norm: True
   prediction_projection_units: 0
   joint_dim: 320
+  joint_activation: tanh
 
 learning_config:
   augmentations:
