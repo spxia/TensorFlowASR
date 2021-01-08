@@ -25,8 +25,8 @@ from ..featurizers.speech_featurizers import read_raw_audio, SpeechFeaturizer
 from ..featurizers.text_featurizers import TextFeaturizer
 from ..utils.utils import bytestring_feature, print_one_line, get_num_batches
 
-AUTOTUNE = 16 #tf.data.experimental.AUTOTUNE # -1 ?
-TFRECORD_SHARDS = 16
+AUTOTUNE = 128 #tf.data.experimental.AUTOTUNE # -1 ?
+TFRECORD_SHARDS = 128
 
 
 def to_tfrecord(path, audio, transcript):
