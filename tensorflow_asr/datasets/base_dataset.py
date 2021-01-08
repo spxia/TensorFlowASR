@@ -24,11 +24,13 @@ class BaseDataset(metaclass=abc.ABCMeta):
                  augmentations: Augmentation = Augmentation(None),
                  cache: bool = False,
                  shuffle: bool = False,
+                 sort: bool = False,
                  stage: str = "train"):
         self.data_paths = data_paths
         self.augmentations = augmentations  # apply augmentation
         self.cache = cache  # whether to cache WHOLE transformed dataset to memory
         self.shuffle = shuffle  # whether to shuffle tf.data.Dataset
+        self.sort = sort    # whether to sort tf.data.Dataset
         self.stage = stage  # for defining tfrecords files
         self.total_steps = None  # for better training visualization
 

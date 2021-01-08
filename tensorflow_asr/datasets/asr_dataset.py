@@ -58,8 +58,9 @@ class ASRDataset(BaseDataset):
                  data_paths: list,
                  augmentations: Augmentation = Augmentation(None),
                  cache: bool = False,
-                 shuffle: bool = False):
-        super(ASRDataset, self).__init__(data_paths, augmentations, cache, shuffle, stage)
+                 shuffle: bool = False,
+                 sort: bool = False):
+        super(ASRDataset, self).__init__(data_paths, augmentations, cache, shuffle, stage, sort)
         self.speech_featurizer = speech_featurizer
         self.text_featurizer = text_featurizer
 
@@ -76,6 +77,11 @@ class ASRDataset(BaseDataset):
         lines = np.array(lines)
         if self.shuffle:
             np.random.shuffle(lines)  # Mix transcripts.tsv
+        if self.sort:
+            lines = lines[lines[:,1].argsort()] # Sort transcripts.tsv  
+                                                # curriculum learning (CL), which makes the model to learn
+                                                # from an easy task to a hard task, can also be cosidered to accelerate
+                                                # training convergence
         self.total_steps = len(lines)
         return lines
 

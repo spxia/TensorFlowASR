@@ -111,8 +111,8 @@ class CharFeaturizer(TextFeaturizer):
         for line in lines:
             line = self.preprocess_text(line)
             if line.startswith("#") or not line: continue
-            self.tokens2indices[line[0]] = index
-            self.tokens.append(line[0])
+            self.tokens2indices[line[:]] = index    # self.tokens2indices[line[0]] = index
+            self.tokens.append(line[:]) # self.tokens.append(line[0])
             index += 1
         if self.blank is None: self.blank = len(self.tokens)  # blank not at zero
         self.vocab_array = self.tokens.copy()
@@ -132,7 +132,14 @@ class CharFeaturizer(TextFeaturizer):
         """
         text = self.preprocess_text(text)
         text = list(text.strip())  # remove trailing space
-        indices = [self.tokens2indices[token] for token in text]
+        #indices = [self.tokens2indices[token] for token in text]
+        indices = []
+        for token in text:
+            if self.tokens2indices.get(token):
+                indices.append(self.tokens2indices[token])
+            else:
+                indices.append(self.tokens2indices['<unk>'])
+
         return tf.convert_to_tensor(indices, dtype=tf.int32)
 
     def iextract(self, indices: tf.Tensor) -> tf.Tensor:
