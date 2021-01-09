@@ -28,10 +28,11 @@ train_dataset = ASRSliceDataset(
     speech_featurizer=speech_featurizer,
     text_featurizer=text_featurizer,
     augmentations=config.learning_config.augmentations,
-    stage="train", cache=False, shuffle=True
+    stage="train", cache=False, shuffle=True, sort=False
 )
 
 train_data = train_dataset.create(2)
+
 train_data_loader = strategy.experimental_distribute_dataset(train_data)
 
 
@@ -39,21 +40,20 @@ train_iterator = iter(train_data_loader)
 while True:
     batch=next(train_iterator)
     features, input_length, labels, label_length, prediction, prediction_length = batch
-    print ("features")
-    print (features)
-    print ("input_length")
-    print (input_length)
+    #print ("features")
+    #print (features)
+    #print ("input_length")
+    #print (input_length)
     print ("labels")
     print (labels)
-    print ("label_length")
-    print (label_length)
-    print ("prediction")
-    print (prediction)
-    print ("prediction_length")
-    print (prediction_length)
+    #print ("label_length")
+    #print (label_length)
+    #print ("prediction")
+    #print (prediction)
+    #print ("prediction_length")
+    #print (prediction_length)
 
 """
-
-a = text_featurizer.extract("一丁七万丈")
+a = text_featurizer.extract("一丁七万 丈 oo A 一")
 print(a)
 """

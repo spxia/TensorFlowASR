@@ -57,6 +57,11 @@ model_config:
 
 learning_config:
   augmentations:
+    before:
+      noise:
+        color: white
+      shift:
+      speed:
     after:
       time_masking:
         num_masks: 10
