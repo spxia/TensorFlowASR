@@ -86,8 +86,7 @@ class SignalSpeed(naa.SpeedAug):
                  zone=(0.2, 0.8),
                  coverage=1.,
                  factor=(0.5, 2)):
-        super(SignalSpeed, self).__init__(zone=zone, coverage=coverage,
-                                          duration=None, factor=factor)
+        super(SignalSpeed, self).__init__(zone=zone, coverage=coverage, factor=factor)
 
 
 class SignalVtlp(naa.VtlpAug):

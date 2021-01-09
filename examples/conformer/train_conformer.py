@@ -75,14 +75,14 @@ if args.tfrecords:
         speech_featurizer=speech_featurizer,
         text_featurizer=text_featurizer,
         augmentations=config.learning_config.augmentations,
-        stage="train", cache=args.cache, shuffle=True
+        stage="train", cache=args.cache, shuffle=True, sort=False
     )
     eval_dataset = ASRTFRecordDataset(
         data_paths=config.learning_config.dataset_config.eval_paths,
         tfrecords_dir=config.learning_config.dataset_config.tfrecords_dir,
         speech_featurizer=speech_featurizer,
         text_featurizer=text_featurizer,
-        stage="eval", cache=args.cache, shuffle=True
+        stage="eval", cache=args.cache, shuffle=True, sort=False
     )
 else:
     train_dataset = ASRSliceDataset(
@@ -90,13 +90,13 @@ else:
         speech_featurizer=speech_featurizer,
         text_featurizer=text_featurizer,
         augmentations=config.learning_config.augmentations,
-        stage="train", cache=args.cache, shuffle=True
+        stage="train", cache=args.cache, shuffle=True, sort=False
     )
     eval_dataset = ASRSliceDataset(
         data_paths=config.learning_config.dataset_config.eval_paths,
         speech_featurizer=speech_featurizer,
         text_featurizer=text_featurizer,
-        stage="eval", cache=args.cache, shuffle=True
+        stage="eval", cache=args.cache, shuffle=True, sort=False
     )
 
 conformer_trainer = TransducerTrainer(

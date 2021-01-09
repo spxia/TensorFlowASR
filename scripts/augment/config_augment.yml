@@ -1,0 +1,23 @@
+# 数据增强的config
+# 可以多种增强方式一起使用，也可以单独使用
+#
+# AUGMENTATIONS = {
+#   "noise": SignalNoise,
+#    "masking": SignalMask,
+#    "cropping": SignalCropping,
+#    "loudness": SignalLoudness,
+#    "pitch": SignalPitch,
+#    "shift": SignalShift,
+#    "speed": SignalSpeed,
+#    "vtlp": SignalVtlp
+# }
+#
+
+
+learning_config:
+  augmentations:
+    before:
+      noise:
+        color: white
+      shift:
+      speed:
