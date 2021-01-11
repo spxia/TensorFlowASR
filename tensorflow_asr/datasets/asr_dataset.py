@@ -25,8 +25,8 @@ from ..featurizers.speech_featurizers import read_raw_audio, SpeechFeaturizer
 from ..featurizers.text_featurizers import TextFeaturizer
 from ..utils.utils import bytestring_feature, print_one_line, get_num_batches
 
-AUTOTUNE = 128 #tf.data.experimental.AUTOTUNE # -1 ?
-TFRECORD_SHARDS = 128
+AUTOTUNE = 32 #tf.data.experimental.AUTOTUNE # -1 ?
+TFRECORD_SHARDS = 32
 
 
 def to_tfrecord(path, audio, transcript):
@@ -157,10 +157,11 @@ class ASRTFRecordDataset(ASRDataset):
                  stage: str,
                  augmentations: Augmentation = Augmentation(None),
                  cache: bool = False,
-                 shuffle: bool = False):
+                 shuffle: bool = False,
+                 sort: bool = False):
         super(ASRTFRecordDataset, self).__init__(
             stage, speech_featurizer, text_featurizer,
-            data_paths, augmentations, cache, shuffle
+            data_paths, augmentations, cache, shuffle, sort
         )
         self.tfrecords_dir = tfrecords_dir
         if not os.path.exists(self.tfrecords_dir):
